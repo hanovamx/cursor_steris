@@ -7,8 +7,3 @@ backgroundColor = "#F8F8F8"
 secondaryBackgroundColor = "#E0F7FA"
 textColor = "#222222"
 font = "sans serif"
-
-[ui]
-page_title = "Generador de Orden de Compra"
-page_icon = "��"
-layout = "wide" 
