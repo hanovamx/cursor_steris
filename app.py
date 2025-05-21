@@ -7,11 +7,6 @@ from pathlib import Path
 from fuzzywuzzy import process
 from utils.template_filler import fill_po_template
 from utils.pdf_processor import process_pdf
-import os
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Constantes
 PRODUCT_DB_PATH = "data/XLSX1_product_database.xlsx"
@@ -180,8 +175,8 @@ def main():
 
     products, customers = load_databases()
     
-    # Only use OpenAI API key from .env
-    openai_api_key = os.getenv("OPENAI_API_KEY", "")
+    # Use OpenAI API key from Streamlit secrets
+    openai_api_key = st.secrets["OPENAI_API_KEY"]
     
     archivo_pdf = st.file_uploader("Subir Orden de Compra del Cliente (PDF)", type=['pdf'])
 
