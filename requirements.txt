@@ -11,5 +11,9 @@ easyocr
 openai
 pillow
 pdf2image
+<<<<<<< Updated upstream
+numpy 
+>>>>>>> Stashed changes
+=======
 numpy 
 >>>>>>> Stashed changes
