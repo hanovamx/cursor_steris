@@ -9,3 +9,5 @@ openai
 pillow
 pdf2image
 numpy
+pytesseract
+python-dotenv

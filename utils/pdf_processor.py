@@ -3,6 +3,7 @@ import re
 import json
 import numpy as np
 from PIL import Image
+import pytesseract
 import easyocr
 from openai import OpenAI
 from pdf2image import convert_from_bytes
@@ -13,6 +14,9 @@ def pdf_to_images(pdf_file: bytes) -> List[Image.Image]:
     """Convert PDF bytes to a list of PIL Images."""
     return convert_from_bytes(pdf_file)
 
+def extract_with_pytesseract(image: Image.Image) -> str:
+    """Extract text from image using pytesseract."""
+    return pytesseract.image_to_string(image, lang='spa+eng')
 def extract_with_easyocr(image: Image.Image) -> str:
     """Extract text from image using easyocr."""
     reader = easyocr.Reader(['es', 'en'])
@@ -97,17 +101,28 @@ The document contains product information including position numbers, material c
         print(f"Error in OpenAI extraction: {e}")
         return None
 
+def is_product_incomplete(product: dict) -> bool:
+    # Require all of these fields to be present and non-empty/non-None
+    required_fields = ["description", "quantity", "unit", "unit_price"]
+    for f in required_fields:
+        v = product.get(f)
+        if v is None or str(v).strip().lower() in ('', 'none', 'n/a'):
+            return True
+    return False
+
 def process_pdf(pdf_file: bytes, api_key: str) -> List[Dict]:
     """
-    Try PyPDF2+regex first. If no products, try EasyOCR, then OpenAI GPT-4o as last resort.
+    Try PyPDF2+regex first. If no products, or only incomplete products, try EasyOCR, then OpenAI GPT-4o as last resort.
     """
     all_products = []
     from app import extract_products_from_pdf
     # Try PyPDF2+regex first
     try:
         products = extract_products_from_pdf(io.BytesIO(pdf_file))
-        if products:
-            return products
+        # Filter out incomplete products
+        complete_products = [p for p in products if not is_product_incomplete(p)]
+        if complete_products:
+            return complete_products
     except Exception as e:
         print(f"PyPDF2 extraction failed: {e}")
     # Convert PDF to images
@@ -117,8 +132,9 @@ def process_pdf(pdf_file: bytes, api_key: str) -> List[Dict]:
         text = extract_with_easyocr(image)
         if is_text_valid_for_extraction(text):
             products = extract_products_from_pdf(text)
-            if products:
-                all_products.extend(products)
+            complete_products = [p for p in products if not is_product_incomplete(p)]
+            if complete_products:
+                all_products.extend(complete_products)
                 continue
         # Fall back to OpenAI
         if api_key:
