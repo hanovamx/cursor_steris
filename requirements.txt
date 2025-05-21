@@ -4,11 +4,6 @@ openpyxl==3.1.2
 PyPDF2==3.0.1
 fuzzywuzzy
 python-Levenshtein
-easyocr
 openai
 pillow
-pdf2image
 numpy
-pytesseract
-python-dotenv
-poppler
