@@ -3,17 +3,9 @@ pandas==2.2.1
 openpyxl==3.1.2
 PyPDF2==3.0.1
 fuzzywuzzy
-<<<<<<< Updated upstream
-python-Levenshtein 
-=======
 python-Levenshtein
 easyocr
 openai
 pillow
 pdf2image
-<<<<<<< Updated upstream
-numpy 
->>>>>>> Stashed changes
-=======
-numpy 
->>>>>>> Stashed changes
+numpy
