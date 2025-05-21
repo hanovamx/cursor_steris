@@ -6,6 +6,12 @@ import re
 from pathlib import Path
 from fuzzywuzzy import process
 from utils.template_filler import fill_po_template
+from utils.pdf_processor import process_pdf
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Constantes
 PRODUCT_DB_PATH = "data/XLSX1_product_database.xlsx"
@@ -24,14 +30,20 @@ def load_databases():
     return products, customers
 
 def extract_products_from_pdf(pdf_file):
+    """Legacy function for regex-based extraction. Now used as fallback after OCR."""
     products = []
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
-    lines = []
-    for page in pdf_reader.pages:
-        text = page.extract_text()
-        if text:
-            # Clean up: remove empty lines
-            lines.extend([l for l in text.split('\n') if l.strip()])
+    if isinstance(pdf_file, str):
+        # If text is passed directly (from OCR)
+        lines = pdf_file.split('\n')
+    else:
+        # If PDF file is passed
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+        lines = []
+        for page in pdf_reader.pages:
+            text = page.extract_text()
+            if text:
+                lines.extend([l for l in text.split('\n') if l.strip()])
+    
     i = 0
     while i < len(lines):
         first_line = lines[i].strip()
@@ -97,7 +109,6 @@ def extract_products_from_pdf(pdf_file):
                     except Exception:
                         total = None
                     raw_second = next_line
-            # If still not enough info, here is where you could call OpenAI for extraction
             products.append({
                 'position': pos,
                 'material': material,
@@ -168,45 +179,65 @@ def main():
     st.write("Sube el PDF de la orden del cliente y revisa los productos identificados.")
 
     products, customers = load_databases()
+    
+    # Only use OpenAI API key from .env
+    openai_api_key = os.getenv("OPENAI_API_KEY", "")
+    
     archivo_pdf = st.file_uploader("Subir Orden de Compra del Cliente (PDF)", type=['pdf'])
 
     if archivo_pdf:
-        productos_cliente = extract_products_from_pdf(archivo_pdf)
-        if productos_cliente:
-            st.success(f"{len(productos_cliente)} productos encontrados en el PDF.")
-            productos_conciliados = match_products(productos_cliente, products)
-            cliente = st.selectbox("Selecciona el cliente", customers['Unidades Maduras'].tolist())
-            st.subheader("Productos identificados y conciliados")
-            for idx, producto in enumerate(productos_conciliados):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"<div style='font-size:13px'><b>Extraído del PDF de cliente</b><br>"
-                        f"Posición: {producto['position']}<br>"
-                        f"Material: {producto['material']}<br>"
-                        f"Descripción: {producto['description']}<br>"
-                        f"Cantidad: {producto['quantity']}<br>"
-                        f"Unidad: {producto['unit']}<br>"
-                        f"Precio unitario: {producto['unit_price'] if producto['unit_price'] is not None else 'N/A'}<br>"
-                        f"Total: {producto['total'] if producto['total'] is not None else 'N/A'}<br>"
-                        f"</div>", unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f"<div style='font-size:13px'><b>Coincidencia en base de datos Steris</b><br>"
-                        f"Código: {producto['matched_code'] if producto['matched_code'] else 'N/A'}<br>"
-                        f"Nombre: {producto['matched_name']}<br>"
-                        f"Unidad: {producto['matched_unit']}<br>"
-                        f"</div>", unsafe_allow_html=True)
-                st.markdown("<hr style='margin:8px 0'>", unsafe_allow_html=True)
-            if st.button("Generar Orden de Compra"):
-                info_cliente = customers[customers['Unidades Maduras'] == cliente].iloc[0]
-                po_path = generate_po(productos_conciliados, info_cliente, PO_TEMPLATE_PATH)
-                st.success("¡Orden de compra generada exitosamente!")
-                with open(po_path, 'rb') as f:
-                    st.download_button(
-                        "Descargar Orden de Compra",
-                        f,
-                        file_name=po_path.name,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+        try:
+            # Read the PDF file
+            pdf_bytes = archivo_pdf.read()
+            
+            # Process the PDF using the new hybrid approach
+            if openai_api_key:
+                productos_cliente = process_pdf(pdf_bytes, openai_api_key)
+            else:
+                # Fallback to traditional extraction if no API key
+                productos_cliente = extract_products_from_pdf(pdf_bytes)
+            
+            if productos_cliente:
+                st.success(f"{len(productos_cliente)} productos encontrados en el PDF.")
+                productos_conciliados = match_products(productos_cliente, products)
+                cliente = st.selectbox("Selecciona el cliente", customers['Unidades Maduras'].tolist())
+                st.subheader("Productos identificados y conciliados")
+                
+                for idx, producto in enumerate(productos_conciliados):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"<div style='font-size:13px'><b>Extraído del PDF de cliente</b><br>"
+                            f"Posición: {producto['position']}<br>"
+                            f"Material: {producto['material']}<br>"
+                            f"Descripción: {producto['description']}<br>"
+                            f"Cantidad: {producto['quantity']}<br>"
+                            f"Unidad: {producto['unit']}<br>"
+                            f"Precio unitario: {producto['unit_price'] if producto['unit_price'] is not None else 'N/A'}<br>"
+                            f"Total: {producto['total'] if producto['total'] is not None else 'N/A'}<br>"
+                            f"</div>", unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"<div style='font-size:13px'><b>Coincidencia en base de datos Steris</b><br>"
+                            f"Código: {producto['matched_code'] if producto['matched_code'] else 'N/A'}<br>"
+                            f"Nombre: {producto['matched_name']}<br>"
+                            f"Unidad: {producto['matched_unit']}<br>"
+                            f"</div>", unsafe_allow_html=True)
+                    st.markdown("<hr style='margin:8px 0'>", unsafe_allow_html=True)
+                
+                if st.button("Generar Orden de Compra"):
+                    info_cliente = customers[customers['Unidades Maduras'] == cliente].iloc[0]
+                    po_path = generate_po(productos_conciliados, info_cliente, PO_TEMPLATE_PATH)
+                    st.success("¡Orden de compra generada exitosamente!")
+                    with open(po_path, 'rb') as f:
+                        st.download_button(
+                            "Descargar Orden de Compra",
+                            f,
+                            file_name=po_path.name,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+            else:
+                st.error("No se pudieron extraer productos del PDF. Por favor, verifica el formato del documento.")
+        except Exception as e:
+            st.error(f"Error al procesar el PDF: {str(e)}")
 
 if __name__ == "__main__":
     main() 
